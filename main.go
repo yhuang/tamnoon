@@ -17,7 +17,7 @@ import (
 )
 
 func getAllRegions(clientPtr *ec2.Client) (*map[string]bool, error) {
-	results, err := clientPtr.DescribeRegions(context.TODO(), nil)
+	output, err := clientPtr.DescribeRegions(context.TODO(), nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("\nerror: %v", err)
@@ -25,7 +25,7 @@ func getAllRegions(clientPtr *ec2.Client) (*map[string]bool, error) {
 
 	allRegionsMap := make(map[string]bool)
 
-	for _, r := range results.Regions {
+	for _, r := range output.Regions {
 		allRegionsMap[*r.RegionName] = true
 	}
 

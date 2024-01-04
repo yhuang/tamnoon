@@ -12,7 +12,7 @@ import (
 )
 
 func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
-	volumes := []Volume{}
+	volumesList := []Volume{}
 	filters := []types.Filter{
 		{
 			Name:   aws.String("encrypted"),
@@ -38,9 +38,10 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 		}
 
 		for _, volume := range output.Volumes {
-			var attachments []Attachment
+			attachmentsList := []Attachment{}
+
 			for _, attachment := range volume.Attachments {
-				attachments = append(attachments, Attachment{
+				attachmentsList = append(attachmentsList, Attachment{
 					InstanceId: *attachment.InstanceId,
 					Device:     *attachment.Device,
 				})
@@ -58,8 +59,8 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 				return nil, fmt.Errorf("\nerror: %v", err)
 			}
 
-			volumes = append(
-				volumes,
+			volumesList = append(
+				volumesList,
 				Volume{
 					VolumeId:           *volume.VolumeId,
 					Name:               *volume.Tags[0].Value,
@@ -70,13 +71,13 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 					MultiAttachEnabled: *volume.MultiAttachEnabled,
 					AutoEnableIO:       *attributeOutput.AutoEnableIO.Value,
 					Size:               int32(*volume.Size),
-					Attachments:        attachments,
+					Attachments:        attachmentsList,
 				},
 			)
 		}
 	}
 
-	return &volumes, nil
+	return &volumesList, nil
 }
 
 func StopInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
@@ -144,8 +145,8 @@ func StartInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 }
 
 func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
-	var createOutput *ec2.CreateSnapshotOutput
 	var err error
+	var createOutput *ec2.CreateSnapshotOutput
 
 	if createOutput, err = clientPtr.CreateSnapshot(
 		context.TODO(),
@@ -203,8 +204,8 @@ func DeleteSnapshot(clientPtr *ec2.Client, snapshotId string) error {
 }
 
 func CreateVolumeFromSnapshot(clientPtr *ec2.Client, volume *Volume, snapshotId string) (*Volume, error) {
-	var createOutput *ec2.CreateVolumeOutput
 	var err error
+	var createOutput *ec2.CreateVolumeOutput
 
 	if createOutput, err = clientPtr.CreateVolume(
 		context.TODO(),
@@ -291,7 +292,7 @@ func WaitForVolumeState(clientPtr *ec2.Client, volumeId *string, volumeState typ
 			break
 		}
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 
 	return nil
