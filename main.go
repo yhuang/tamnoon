@@ -62,10 +62,10 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 	return &regionsList, nil
 }
 
-func Remediate(clientPtr *ec2.Client, volumesPtr *[]utils.Volume) error {
+func Remediate(clientPtr *ec2.Client, volumesListPtr *[]utils.Volume) error {
 	var err error
 
-	for _, volume := range *volumesPtr {
+	for _, volume := range *volumesListPtr {
 		instanceIdsList := []string{}
 
 		for _, attachment := range volume.Attachments {
@@ -144,22 +144,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var volumesPtr *[]utils.Volume
+	var volumesListPtr *[]utils.Volume
 
 	for _, region := range *selectedRegionsListPtr {
 		cfg.Region = *aws.String(region)
 
 		clientPtr = ec2.NewFromConfig(cfg)
 
-		if volumesPtr, err = utils.GetUnencryptedVolumes(clientPtr); err != nil {
+		if volumesListPtr, err = utils.GetUnencryptedVolumes(clientPtr); err != nil {
 			log.Fatal(err)
 		}
 
-		data, _ := json.Marshal(*volumesPtr)
+		data, _ := json.Marshal(*volumesListPtr)
 		fmt.Println(string(data))
 	}
 
-	if err = Remediate(clientPtr, volumesPtr); err != nil {
+	if err = Remediate(clientPtr, volumesListPtr); err != nil {
 		log.Fatal(err)
 	}
 }
