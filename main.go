@@ -20,7 +20,7 @@ func getAllRegions(clientPtr *ec2.Client) (*map[string]bool, error) {
 	results, err := clientPtr.DescribeRegions(context.TODO(), nil)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	allRegionsMap := make(map[string]bool)
@@ -36,7 +36,7 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 	allRegionsMapPtr, err := getAllRegions(clientPtr)
 
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	var regionsOpt string
@@ -63,49 +63,64 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 }
 
 func Remediate(clientPtr *ec2.Client, volumesPtr *[]utils.Volume) error {
+	var err error
+
 	for _, volume := range *volumesPtr {
 		instanceIdsList := []string{}
 
 		for _, attachment := range volume.Attachments {
 			instanceId := attachment.InstanceId
+
+			if instanceId == "" {
+				continue
+			}
+
 			instanceIdsList = append(instanceIdsList, instanceId)
 		}
 
-		err := utils.StopInstances(clientPtr, &instanceIdsList)
-
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		if err = utils.StopInstances(clientPtr, &instanceIdsList); err != nil {
+			return err
 		}
 
 		snapshotId, err := utils.CreateSnapshot(clientPtr, volume.VolumeId)
 
 		if err != nil {
-			return fmt.Errorf("error: %v", err)
+			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nSnapshot %s created", snapshotId)
+		fmt.Fprintf(os.Stderr, "\nSnapshot %s created.", snapshotId)
 
-		err = utils.ReplaceVolumeAttachments(clientPtr, &volume, snapshotId)
+		var newVolumePtr *utils.Volume
 
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		if newVolumePtr, err = utils.CreateVolumeFromSnapshot(clientPtr, &volume, snapshotId); err != nil {
+			return err
 		}
 
-		err = utils.DeleteSnapshot(clientPtr, snapshotId)
+		fmt.Fprintf(os.Stderr, "\nCreated encrypted volume %s from snapshot %s.", newVolumePtr.VolumeId, snapshotId)
 
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		if err = utils.ReplaceVolumeAttachments(clientPtr, &volume, newVolumePtr); err != nil {
+			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nSnapshot %s deleted", snapshotId)
+		fmt.Fprintf(os.Stderr, "\nRedirected unencrypted volume %s attachments to encrypted volume %s.", volume.VolumeId, newVolumePtr.VolumeId)
 
-		utils.StartInstances(clientPtr, &instanceIdsList)
-
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		if err = utils.DeleteVolume(clientPtr, &volume); err != nil {
+			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nVolume %s remediated\n", volume.VolumeId)
+		fmt.Fprintf(os.Stderr, "\nDeleted unencrypted volume %s.", volume.VolumeId)
+
+		if err = utils.DeleteSnapshot(clientPtr, snapshotId); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(os.Stderr, "\nSnapshot %s deleted.", snapshotId)
+
+		if err = utils.StartInstances(clientPtr, &instanceIdsList); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(os.Stderr, "\nReplaced unencrypted volume %s with encrypted volume %s.\n", volume.VolumeId, newVolumePtr.VolumeId)
 	}
 
 	return nil
@@ -135,9 +150,8 @@ func main() {
 		cfg.Region = *aws.String(region)
 
 		clientPtr = ec2.NewFromConfig(cfg)
-		volumesPtr, err = utils.GetUnencryptedVolumes(clientPtr)
 
-		if err != nil {
+		if volumesPtr, err = utils.GetUnencryptedVolumes(clientPtr); err != nil {
 			log.Fatal(err)
 		}
 
@@ -145,9 +159,7 @@ func main() {
 		fmt.Println(string(data))
 	}
 
-	err = Remediate(clientPtr, volumesPtr)
-
-	if err != nil {
+	if err = Remediate(clientPtr, volumesPtr); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -24,7 +24,6 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 		},
 	}
 
-	// Create a DescribeVolumesPaginator
 	paginator := ec2.NewDescribeVolumesPaginator(
 		clientPtr,
 		&ec2.DescribeVolumesInput{
@@ -32,14 +31,12 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 		},
 	)
 
-	// Iterate through each page of results
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			return nil, fmt.Errorf("error retrieving volumes: %v", err)
+			return nil, fmt.Errorf("\nerror: %v\n", err)
 		}
 
-		// Process the retrieved volumes
 		for _, volume := range output.Volumes {
 			var attachments []Attachment
 			for _, attachment := range volume.Attachments {
@@ -58,7 +55,7 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 			)
 
 			if err != nil {
-				return nil, fmt.Errorf("error retrieving volumes: %v", err)
+				return nil, fmt.Errorf("\nerror: %v\n", err)
 			}
 
 			volumes = append(
@@ -83,15 +80,15 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 }
 
 func StopInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
-	_, err := clientPtr.StopInstances(
+	var err error
+
+	if _, err = clientPtr.StopInstances(
 		context.TODO(),
 		&ec2.StopInstancesInput{
 			InstanceIds: *instanceIdsListPtr,
 		},
-	)
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	stoppedWaiter := ec2.NewInstanceStoppedWaiter(
@@ -101,31 +98,29 @@ func StopInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 		},
 	)
 
-	err = stoppedWaiter.Wait(
+	if err = stoppedWaiter.Wait(
 		context.TODO(),
 		&ec2.DescribeInstancesInput{
 			InstanceIds: *instanceIdsListPtr,
 		},
 		15*time.Minute,
-	)
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	return nil
 }
 
 func StartInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
-	_, err := clientPtr.StartInstances(
+	var err error
+
+	if _, err = clientPtr.StartInstances(
 		context.TODO(),
 		&ec2.StartInstancesInput{
 			InstanceIds: *instanceIdsListPtr,
 		},
-	)
-
-	if err != nil {
-		panic(err)
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	runningWaiter := ec2.NewInstanceRunningWaiter(
@@ -135,23 +130,24 @@ func StartInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 		},
 	)
 
-	err = runningWaiter.Wait(
+	if err = runningWaiter.Wait(
 		context.TODO(),
 		&ec2.DescribeInstancesInput{
 			InstanceIds: *instanceIdsListPtr,
 		},
 		15*time.Minute,
-	)
-
-	if err != nil {
-		panic(err)
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	return nil
 }
 
 func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
-	createOutput, err := clientPtr.CreateSnapshot(
+	var createOutput *ec2.CreateSnapshotOutput
+	var err error
+
+	if createOutput, err = clientPtr.CreateSnapshot(
 		context.TODO(),
 		&ec2.CreateSnapshotInput{
 			VolumeId: aws.String(volumeId),
@@ -167,24 +163,22 @@ func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
 				},
 			},
 		},
-	)
-
-	if err != nil {
-		return "", fmt.Errorf("error: %v", err)
+	); err != nil {
+		return "", fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	snapshotId := *createOutput.SnapshotId
 
+	var describeOutput *ec2.DescribeSnapshotsOutput
+
 	for {
-		describeOutput, err := clientPtr.DescribeSnapshots(
+		if describeOutput, err = clientPtr.DescribeSnapshots(
 			context.TODO(),
 			&ec2.DescribeSnapshotsInput{
 				SnapshotIds: []string{snapshotId},
 			},
-		)
-
-		if err != nil {
-			return "", fmt.Errorf("error: %v", err)
+		); err != nil {
+			return "", fmt.Errorf("\nerror: %v\n", err)
 		}
 
 		if describeOutput.Snapshots[0].State == types.SnapshotStateCompleted {
@@ -198,20 +192,21 @@ func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
 }
 
 func DeleteSnapshot(clientPtr *ec2.Client, snapshotId string) error {
-	_, err := clientPtr.DeleteSnapshot(
+	if _, err := clientPtr.DeleteSnapshot(
 		context.TODO(),
 		&ec2.DeleteSnapshotInput{SnapshotId: aws.String(snapshotId)},
-	)
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	return nil
 }
 
-func ReplaceVolumeAttachments(clientPtr *ec2.Client, volume *Volume, snapshotId string) error {
-	createOutput, err := clientPtr.CreateVolume(
+func CreateVolumeFromSnapshot(clientPtr *ec2.Client, volume *Volume, snapshotId string) (*Volume, error) {
+	var createOutput *ec2.CreateVolumeOutput
+	var err error
+
+	if createOutput, err = clientPtr.CreateVolume(
 		context.TODO(),
 		&ec2.CreateVolumeInput{
 			SnapshotId:         aws.String(snapshotId),
@@ -233,68 +228,118 @@ func ReplaceVolumeAttachments(clientPtr *ec2.Client, volume *Volume, snapshotId 
 				},
 			},
 		},
-	)
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	); err != nil {
+		return nil, fmt.Errorf("\nerror: %v\n", err)
 	}
 
 	autoEnableIoAttr := types.AttributeBooleanValue{Value: aws.Bool(volume.MultiAttachEnabled)}
 
-	_, err = clientPtr.ModifyVolumeAttribute(
+	if _, err = clientPtr.ModifyVolumeAttribute(
 		context.TODO(),
 		&ec2.ModifyVolumeAttributeInput{
 			VolumeId:     createOutput.VolumeId,
 			AutoEnableIO: &autoEnableIoAttr,
 		},
-	)
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	); err != nil {
+		return nil, fmt.Errorf("\nerror: %v\n", err)
 	}
 
-	for _, attachment := range volume.Attachments {
-		_, err := clientPtr.DetachVolume(
+	newVolume := Volume{
+		VolumeId:           *createOutput.VolumeId,
+		Name:               *createOutput.Tags[0].Value,
+		VolumeType:         string(createOutput.VolumeType),
+		Zone:               *createOutput.AvailabilityZone,
+		State:              string(createOutput.State),
+		Iops:               int32(*createOutput.Iops),
+		MultiAttachEnabled: *createOutput.MultiAttachEnabled,
+		AutoEnableIO:       volume.MultiAttachEnabled,
+		Size:               int32(*createOutput.Size),
+		Attachments: 		[]Attachment{},
+	}
+
+	return &newVolume, nil
+}
+
+func DeleteVolume(clientPtr *ec2.Client, volume *Volume) error {
+	if _, err := clientPtr.DeleteVolume(
+		context.TODO(),
+		&ec2.DeleteVolumeInput{
+			VolumeId: aws.String(volume.VolumeId),
+		},
+	); err != nil {
+		return fmt.Errorf("\nerror: %v\n", err)
+	}
+
+	return nil
+}
+
+func WaitForVolumeState(clientPtr *ec2.Client, volumeId *string, volumeState types.VolumeState) error {
+	for {
+		fmt.Fprintf(os.Stderr, "\nWaiting for volume %s state to change to '%s'...", *volumeId, volumeState)
+		describeOutput, err := clientPtr.DescribeVolumes(
+			context.TODO(),
+			&ec2.DescribeVolumesInput{
+				VolumeIds: []string{*volumeId},
+			},
+		)
+
+		if err != nil {
+			return fmt.Errorf("\nerror: %v\n", err)
+		}
+
+		if describeOutput.Volumes[0].State == volumeState {
+			break
+		}
+
+		time.Sleep(15 * time.Second)
+	}
+
+	return nil
+}
+
+func ReplaceVolumeAttachments(clientPtr *ec2.Client, volumePtr *Volume, newVolumePtr *Volume) error {
+	var err error
+
+	for _, attachment := range volumePtr.Attachments {
+		fmt.Fprintf(os.Stderr, "\nDetaching volume %s from instance %s...", volumePtr.VolumeId, attachment.InstanceId)
+
+		if _, err = clientPtr.DetachVolume(
 			context.TODO(),
 			&ec2.DetachVolumeInput{
-				VolumeId:   aws.String(volume.VolumeId),
+				VolumeId:   aws.String(volumePtr.VolumeId),
 				InstanceId: aws.String(attachment.InstanceId),
 				Device:     aws.String(attachment.Device),
 			},
-		)
-
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		); err != nil {
+			return fmt.Errorf("\nerror: %v\n", err)
 		}
+	}
 
-		fmt.Fprintf(os.Stderr, "\nDetached %s", volume.VolumeId)
+	if err = WaitForVolumeState(clientPtr, aws.String(volumePtr.VolumeId), types.VolumeStateAvailable); err != nil {
+		return err
+	}
 
-		_, err = clientPtr.AttachVolume(
+	fmt.Fprintf(os.Stderr, "\nUnencrypted volume %s is now '%s'.", volumePtr.VolumeId, types.VolumeStateAvailable)
+
+	for _, attachment := range volumePtr.Attachments {
+		fmt.Fprintf(os.Stderr, "\nAttaching volume %s to instance %s...", newVolumePtr.VolumeId, attachment.InstanceId)
+		if _, err = clientPtr.AttachVolume(
 			context.TODO(),
 			&ec2.AttachVolumeInput{
-				VolumeId:   createOutput.VolumeId,
+				VolumeId:   aws.String(newVolumePtr.VolumeId),
 				InstanceId: aws.String(attachment.InstanceId),
 				Device:     aws.String(attachment.Device),
 			},
-		)
-
-		if err != nil {
-			return fmt.Errorf("error: %v", err)
+		); err != nil {
+			return fmt.Errorf("\nerror: %v\n", err)
 		}
-
-		fmt.Fprintf(os.Stderr, "\nAttached %s", volume.VolumeId)
 	}
 
-	// _, err = clientPtr.DeleteVolume(
-	// 	context.TODO(),
-	// 	&ec2.DeleteVolumeInput{
-	// 		VolumeId: aws.String(volume.VolumeId),
-	// 	},
-	// )
-
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
+	if err = WaitForVolumeState(clientPtr, aws.String(newVolumePtr.VolumeId), types.VolumeStateInUse); err != nil {
+		return err
 	}
+	
+	fmt.Fprintf(os.Stderr, "\nEncrypted volume %s is now '%s'.", newVolumePtr.VolumeId, types.VolumeStateInUse)
 
 	return nil
 }
