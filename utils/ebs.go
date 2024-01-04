@@ -34,7 +34,7 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 	for paginator.HasMorePages() {
 		output, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			return nil, fmt.Errorf("\nerror: %v\n", err)
+			return nil, fmt.Errorf("\nerror: %v", err)
 		}
 
 		for _, volume := range output.Volumes {
@@ -55,7 +55,7 @@ func GetUnencryptedVolumes(clientPtr *ec2.Client) (*[]Volume, error) {
 			)
 
 			if err != nil {
-				return nil, fmt.Errorf("\nerror: %v\n", err)
+				return nil, fmt.Errorf("\nerror: %v", err)
 			}
 
 			volumes = append(
@@ -88,7 +88,7 @@ func StopInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 			InstanceIds: *instanceIdsListPtr,
 		},
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	stoppedWaiter := ec2.NewInstanceStoppedWaiter(
@@ -105,7 +105,7 @@ func StopInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 		},
 		15*time.Minute,
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	return nil
@@ -120,7 +120,7 @@ func StartInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 			InstanceIds: *instanceIdsListPtr,
 		},
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	runningWaiter := ec2.NewInstanceRunningWaiter(
@@ -137,7 +137,7 @@ func StartInstances(clientPtr *ec2.Client, instanceIdsListPtr *[]string) error {
 		},
 		15*time.Minute,
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	return nil
@@ -164,7 +164,7 @@ func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
 			},
 		},
 	); err != nil {
-		return "", fmt.Errorf("\nerror: %v\n", err)
+		return "", fmt.Errorf("\nerror: %v", err)
 	}
 
 	snapshotId := *createOutput.SnapshotId
@@ -178,7 +178,7 @@ func CreateSnapshot(clientPtr *ec2.Client, volumeId string) (string, error) {
 				SnapshotIds: []string{snapshotId},
 			},
 		); err != nil {
-			return "", fmt.Errorf("\nerror: %v\n", err)
+			return "", fmt.Errorf("\nerror: %v", err)
 		}
 
 		if describeOutput.Snapshots[0].State == types.SnapshotStateCompleted {
@@ -196,7 +196,7 @@ func DeleteSnapshot(clientPtr *ec2.Client, snapshotId string) error {
 		context.TODO(),
 		&ec2.DeleteSnapshotInput{SnapshotId: aws.String(snapshotId)},
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	return nil
@@ -229,7 +229,7 @@ func CreateVolumeFromSnapshot(clientPtr *ec2.Client, volume *Volume, snapshotId 
 			},
 		},
 	); err != nil {
-		return nil, fmt.Errorf("\nerror: %v\n", err)
+		return nil, fmt.Errorf("\nerror: %v", err)
 	}
 
 	autoEnableIoAttr := types.AttributeBooleanValue{Value: aws.Bool(volume.MultiAttachEnabled)}
@@ -241,7 +241,7 @@ func CreateVolumeFromSnapshot(clientPtr *ec2.Client, volume *Volume, snapshotId 
 			AutoEnableIO: &autoEnableIoAttr,
 		},
 	); err != nil {
-		return nil, fmt.Errorf("\nerror: %v\n", err)
+		return nil, fmt.Errorf("\nerror: %v", err)
 	}
 
 	newVolume := Volume{
@@ -254,7 +254,7 @@ func CreateVolumeFromSnapshot(clientPtr *ec2.Client, volume *Volume, snapshotId 
 		MultiAttachEnabled: *createOutput.MultiAttachEnabled,
 		AutoEnableIO:       volume.MultiAttachEnabled,
 		Size:               int32(*createOutput.Size),
-		Attachments: 		[]Attachment{},
+		Attachments:        []Attachment{},
 	}
 
 	return &newVolume, nil
@@ -267,7 +267,7 @@ func DeleteVolume(clientPtr *ec2.Client, volume *Volume) error {
 			VolumeId: aws.String(volume.VolumeId),
 		},
 	); err != nil {
-		return fmt.Errorf("\nerror: %v\n", err)
+		return fmt.Errorf("\nerror: %v", err)
 	}
 
 	return nil
@@ -284,7 +284,7 @@ func WaitForVolumeState(clientPtr *ec2.Client, volumeId *string, volumeState typ
 		)
 
 		if err != nil {
-			return fmt.Errorf("\nerror: %v\n", err)
+			return fmt.Errorf("\nerror: %v", err)
 		}
 
 		if describeOutput.Volumes[0].State == volumeState {
@@ -311,7 +311,7 @@ func ReplaceVolumeAttachments(clientPtr *ec2.Client, volumePtr *Volume, newVolum
 				Device:     aws.String(attachment.Device),
 			},
 		); err != nil {
-			return fmt.Errorf("\nerror: %v\n", err)
+			return fmt.Errorf("\nerror: %v", err)
 		}
 	}
 
@@ -331,14 +331,14 @@ func ReplaceVolumeAttachments(clientPtr *ec2.Client, volumePtr *Volume, newVolum
 				Device:     aws.String(attachment.Device),
 			},
 		); err != nil {
-			return fmt.Errorf("\nerror: %v\n", err)
+			return fmt.Errorf("\nerror: %v", err)
 		}
 	}
 
 	if err = WaitForVolumeState(clientPtr, aws.String(newVolumePtr.VolumeId), types.VolumeStateInUse); err != nil {
 		return err
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "\nEncrypted volume %s is now '%s'.", newVolumePtr.VolumeId, types.VolumeStateInUse)
 
 	return nil

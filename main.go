@@ -20,7 +20,7 @@ func getAllRegions(clientPtr *ec2.Client) (*map[string]bool, error) {
 	results, err := clientPtr.DescribeRegions(context.TODO(), nil)
 
 	if err != nil {
-		return nil, fmt.Errorf("\nerror: %v\n", err)
+		return nil, fmt.Errorf("\nerror: %v", err)
 	}
 
 	allRegionsMap := make(map[string]bool)
@@ -55,7 +55,7 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 
 	for _, region := range regionsList {
 		if !(*allRegionsMapPtr)[region] {
-			return nil, fmt.Errorf("error: \"%s\" is not a valid region", region)
+			return nil, fmt.Errorf("error: '%s' is not a valid region", region)
 		}
 	}
 
