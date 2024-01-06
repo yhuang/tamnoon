@@ -62,63 +62,80 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 	return &regionsList, nil
 }
 
+func getAttachedInstances(volumePtr *utils.Volume) *[]string {
+	instanceIdsList := []string{}
+
+	for _, attachment := range volumePtr.Attachments {
+		instanceId := attachment.InstanceId
+
+		if instanceId == "" {
+			continue
+		}
+
+		instanceIdsList = append(instanceIdsList, instanceId)
+	}
+
+	return &instanceIdsList
+}
+
+func replaceVolume(clientPtr *ec2.Client, volumePtr *utils.Volume) (*utils.Volume, error) {
+	var snapshotId string
+	var err error
+
+	if snapshotId, err = utils.CreateSnapshot(clientPtr, volumePtr.VolumeId); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "\nSnapshot %s created from unencrypted volume %s.", snapshotId, volumePtr.VolumeId)
+
+	var newVolumePtr *utils.Volume
+
+	if newVolumePtr, err = utils.CreateVolumeFromSnapshot(clientPtr, volumePtr, snapshotId); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "\nCreated encrypted volume %s from snapshot %s.", newVolumePtr.VolumeId, snapshotId)
+
+	if err = utils.ReplaceVolumeAttachments(clientPtr, volumePtr, newVolumePtr); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "\nRedirected unencrypted volume %s's attachments to encrypted volume %s.", volumePtr.VolumeId, newVolumePtr.VolumeId)
+
+	if err = utils.DeleteSnapshot(clientPtr, snapshotId); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "\nDeleted Snapshot %s.", snapshotId)
+
+	if err = utils.DeleteVolume(clientPtr, volumePtr); err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "\nDeleted unencrypted volume %s.", volumePtr.VolumeId)
+
+	return newVolumePtr, nil
+}
+
 func Remediate(clientPtr *ec2.Client, volumesListPtr *[]utils.Volume) error {
 	var err error
 
 	for _, volume := range *volumesListPtr {
-		instanceIdsList := []string{}
+		instanceIdsListPtr := getAttachedInstances(&volume)
 
-		for _, attachment := range volume.Attachments {
-			instanceId := attachment.InstanceId
-
-			if instanceId == "" {
-				continue
-			}
-
-			instanceIdsList = append(instanceIdsList, instanceId)
-		}
-
-		if err = utils.StopInstances(clientPtr, &instanceIdsList); err != nil {
+		if err = utils.StopInstances(clientPtr, instanceIdsListPtr); err != nil {
 			return err
 		}
 
 		fmt.Fprintf(os.Stderr, "\nStopped all instances attached to unencrypted volume %s.", volume.VolumeId)
 
-		snapshotId, err := utils.CreateSnapshot(clientPtr, volume.VolumeId)
-
-		if err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stderr, "\nSnapshot %s created from unencrypted volume %s.", snapshotId, volume.VolumeId)
-
 		var newVolumePtr *utils.Volume
 
-		if newVolumePtr, err = utils.CreateVolumeFromSnapshot(clientPtr, &volume, snapshotId); err != nil {
+		if newVolumePtr, err = replaceVolume(clientPtr, &volume); err != nil {
 			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nCreated encrypted volume %s from snapshot %s.", newVolumePtr.VolumeId, snapshotId)
-
-		if err = utils.ReplaceVolumeAttachments(clientPtr, &volume, newVolumePtr); err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stderr, "\nRedirected unencrypted volume %s's attachments to encrypted volume %s.", volume.VolumeId, newVolumePtr.VolumeId)
-
-		if err = utils.DeleteSnapshot(clientPtr, snapshotId); err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stderr, "\nDeleted Snapshot %s.", snapshotId)
-
-		if err = utils.DeleteVolume(clientPtr, &volume); err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stderr, "\nDeleted unencrypted volume %s.", volume.VolumeId)
-
-		if err = utils.StartInstances(clientPtr, &instanceIdsList); err != nil {
+		if err = utils.StartInstances(clientPtr, instanceIdsListPtr); err != nil {
 			return err
 		}
 
