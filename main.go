@@ -82,13 +82,15 @@ func Remediate(clientPtr *ec2.Client, volumesListPtr *[]utils.Volume) error {
 			return err
 		}
 
+		fmt.Fprintf(os.Stderr, "\nStopped all instances attached to unencrypted volume %s.", volume.VolumeId)
+
 		snapshotId, err := utils.CreateSnapshot(clientPtr, volume.VolumeId)
 
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nSnapshot %s created.", snapshotId)
+		fmt.Fprintf(os.Stderr, "\nSnapshot %s created from unencrypted volume %s.", snapshotId, volume.VolumeId)
 
 		var newVolumePtr *utils.Volume
 
@@ -102,7 +104,13 @@ func Remediate(clientPtr *ec2.Client, volumesListPtr *[]utils.Volume) error {
 			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nRedirected unencrypted volume %s attachments to encrypted volume %s.", volume.VolumeId, newVolumePtr.VolumeId)
+		fmt.Fprintf(os.Stderr, "\nRedirected unencrypted volume %s's attachments to encrypted volume %s.", volume.VolumeId, newVolumePtr.VolumeId)
+
+		if err = utils.DeleteSnapshot(clientPtr, snapshotId); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(os.Stderr, "\nDeleted Snapshot %s.", snapshotId)
 
 		if err = utils.DeleteVolume(clientPtr, &volume); err != nil {
 			return err
@@ -110,17 +118,11 @@ func Remediate(clientPtr *ec2.Client, volumesListPtr *[]utils.Volume) error {
 
 		fmt.Fprintf(os.Stderr, "\nDeleted unencrypted volume %s.", volume.VolumeId)
 
-		if err = utils.DeleteSnapshot(clientPtr, snapshotId); err != nil {
-			return err
-		}
-
-		fmt.Fprintf(os.Stderr, "\nSnapshot %s deleted.", snapshotId)
-
 		if err = utils.StartInstances(clientPtr, &instanceIdsList); err != nil {
 			return err
 		}
 
-		fmt.Fprintf(os.Stderr, "\nReplaced unencrypted volume %s with encrypted volume %s.\n", volume.VolumeId, newVolumePtr.VolumeId)
+		fmt.Fprintf(os.Stderr, "\nStarted all instances attached to encrypted volume %s.\n", newVolumePtr.VolumeId)
 	}
 
 	return nil
