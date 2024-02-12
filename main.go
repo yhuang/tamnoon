@@ -42,7 +42,7 @@ func selectRegions(clientPtr *ec2.Client) (*[]string, error) {
 	var regionsOpt string
 	var regionsList []string
 
-	flag.StringVar(&regionsOpt, "regions", "", "Regions")
+	flag.StringVar(&regionsOpt, "regions", "r", "Regions")
 	flag.StringVar(&regionsOpt, "r", "", "Regions")
 
 	flag.Parse()
